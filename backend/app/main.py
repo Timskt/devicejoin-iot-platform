@@ -71,12 +71,14 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(Exception, generic_error_handler)
 
-    # CORS
+    # CORS - origins from config (not * in production)
+    settings = get_settings()
+    origins = settings.cors_origins.split(",") if settings.cors_origins != "*" else ["*"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
         allow_credentials=True,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 

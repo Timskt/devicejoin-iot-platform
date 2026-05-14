@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
     max_upload_size_mb: int = 50
 
+    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+
     vector_top_k: int = 5
     vector_similarity_threshold: float = 0.7
 

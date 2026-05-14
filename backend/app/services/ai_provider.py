@@ -60,7 +60,7 @@ class OpenAIProvider(AIProvider):
 
     async def chat(self, messages: list[dict], temperature: float = 0.1, max_tokens: int = 16000) -> str:
         if self._no_key:
-            return '{"error": "no_api_key", "message": "请配置 LLM_API_KEY 环境变量"}'
+            return self._no_key_response()
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -71,9 +71,20 @@ class OpenAIProvider(AIProvider):
 
     async def chat_json(self, messages: list[dict], temperature: float = 0.1, max_tokens: int = 16000) -> dict:
         import json
-        text = await self.chat(messages, temperature=temperature, max_tokens=max_tokens)
+
+        from app.core.circuit_breaker import llm_circuit
+        try:
+            text = await llm_circuit.call(self.chat, messages, temperature=temperature, max_tokens=max_tokens)
+        except Exception:
+            text = self._no_key_response()
         text = self._clean_json(text)
-        return json.loads(text)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return {"error": "invalid_json", "raw": text[:500]}
+
+    def _no_key_response(self) -> str:
+        return '{"error": "no_api_key", "message": "请配置 LLM_API_KEY 环境变量"}'
 
     def _clean_json(self, text: str) -> str:
         text = text.strip()

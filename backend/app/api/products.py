@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_current_user
+from app.core.cache import get_cache
 from app.core.database import get_db
 from app.core.rate_limit import limiter
 from app.models import Command, DataPoint, Product
@@ -30,7 +32,11 @@ router = APIRouter(prefix="/products", tags=["products"])
 # ─── 手动 CRUD ───
 
 @router.post("", response_model=ProductResponse, status_code=201)
-async def create_product(data: ProductCreate, db: AsyncSession = Depends(get_db)):
+async def create_product(
+    data: ProductCreate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
     product = Product(
         id=uuid.uuid4(),
         name=data.name,
@@ -49,6 +55,7 @@ async def create_product(data: ProductCreate, db: AsyncSession = Depends(get_db)
         db.add(Command(product_id=product.id, **cmd_data))
     await db.commit()
     await db.refresh(product)
+    await get_cache().delete("products:list")
     return product
 
 
@@ -61,6 +68,12 @@ async def list_products(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
+    # Try cache first for unfiltered listing
+    if not status and not protocol and not search:
+        cached = await get_cache().get("products:list")
+        if cached:
+            return cached
+
     stmt = select(Product)
     if status:
         stmt = stmt.where(Product.status == status)
@@ -70,7 +83,14 @@ async def list_products(
         stmt = stmt.where(Product.name.ilike(f"%{search}%"))
     stmt = stmt.order_by(Product.updated_at.desc()).offset(offset).limit(limit)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    products = result.scalars().all()
+
+    # Cache unfiltered listing for 60 seconds
+    if not status and not protocol and not search:
+        product_data = [ProductResponse.model_validate(p).model_dump() for p in products]
+        await get_cache().set("products:list", product_data, ttl=60)
+
+    return products
 
 
 @router.get("/{product_id}", response_model=ProductResponse)
@@ -84,7 +104,12 @@ async def get_product(product_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/{product_id}", response_model=ProductResponse)
-async def update_product(product_id: str, data: ProductUpdate, db: AsyncSession = Depends(get_db)):
+async def update_product(
+    product_id: str,
+    data: ProductUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
     stmt = select(Product).where(Product.id == uuid.UUID(product_id))
     result = await db.execute(stmt)
     product = result.scalar_one_or_none()
@@ -94,11 +119,16 @@ async def update_product(product_id: str, data: ProductUpdate, db: AsyncSession 
         setattr(product, key, val)
     await db.commit()
     await db.refresh(product)
+    await get_cache().delete("products:list")
     return product
 
 
 @router.delete("/{product_id}", status_code=204)
-async def delete_product(product_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_product(
+    product_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
     stmt = select(Product).where(Product.id == uuid.UUID(product_id))
     result = await db.execute(stmt)
     product = result.scalar_one_or_none()
@@ -106,6 +136,7 @@ async def delete_product(product_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(404, "产品不存在")
     await db.delete(product)
     await db.commit()
+    await get_cache().delete("products:list")
 
 
 # ─── AI 解析 ───
