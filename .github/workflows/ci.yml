@@ -37,7 +37,7 @@ jobs:
         working-directory: backend
         run: |
           pip install pip-audit
-          pip-audit --strict
+          pip-audit --skip-editable --strict
 
       - name: Health check smoke test
         working-directory: backend
