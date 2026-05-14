@@ -4,11 +4,12 @@ REST API - AI 智能模块 (调试、规则、数据探索、面板、模拟)
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.models import Dashboard, DataPoint, Device, Product, Rule
 from app.models.schemas import (
     DashboardCreate,
@@ -33,7 +34,8 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 # ─── 调试助手 ───
 
 @router.post("/debug", response_model=DebugResponse)
-async def ai_debug(data: DebugRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def ai_debug(request: Request, data: DebugRequest, db: AsyncSession = Depends(get_db)):
     stmt = select(Device).where(Device.id == uuid.UUID(data.device_id))
     result = await db.execute(stmt)
     device = result.scalar_one_or_none()
@@ -112,7 +114,8 @@ async def create_rule(data: RuleCreate, db: AsyncSession = Depends(get_db)):
 # ─── 数据探索 ───
 
 @router.post("/data/explore", response_model=DataQueryResponse)
-async def ai_explore_data(data: DataQueryRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("30/minute")
+async def ai_explore_data(request: Request, data: DataQueryRequest, db: AsyncSession = Depends(get_db)):
     sources = []
     if data.device_ids:
         for did in data.device_ids:

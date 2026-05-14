@@ -7,11 +7,12 @@ REST API - 产品管理 & AI 解析
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.models import Command, DataPoint, Product
 from app.models.schemas import (
     AIParseRequest,
@@ -110,7 +111,8 @@ async def delete_product(product_id: str, db: AsyncSession = Depends(get_db)):
 # ─── AI 解析 ───
 
 @router.post("/ai/parse", response_model=AIParseResponse)
-async def ai_parse_documents(data: AIParseRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def ai_parse_documents(request: Request, data: AIParseRequest, db: AsyncSession = Depends(get_db)):
     studio = get_product_studio()
     result = await studio.parse_documents(
         files=data.files,
