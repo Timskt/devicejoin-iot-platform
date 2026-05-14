@@ -29,6 +29,8 @@ dependencies = [
     "celery>=5.4.0",
     "structlog>=24.4.0",
     "slowapi>=0.1.9",
+    "prometheus-client>=0.21.0",
+    "prometheus-fastapi-instrumentator>=7.0.0",
 ]
 
 [project.optional-dependencies]
@@ -66,3 +68,11 @@ exclude = ["tests/", "alembic/"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-v --cov=app --cov-report=term-missing -W ignore::UserWarning"
+
+[tool.setuptools.packages.find]
+include = ["app", "app.*"]
+exclude = ["tests", "tests.*", "uploads", "alembic", "alembic.*"]
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"

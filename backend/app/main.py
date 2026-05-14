@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
@@ -83,6 +84,9 @@ def create_app() -> FastAPI:
     app.include_router(products_router, prefix="/api/v1")
     app.include_router(ai_router, prefix="/api/v1")
     app.include_router(ws_router, prefix="/api/v1")
+
+    # Prometheus metrics (observability-stack requirement)
+    Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
     @app.get("/health")
     async def health():
