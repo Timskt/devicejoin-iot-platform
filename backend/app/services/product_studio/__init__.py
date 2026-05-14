@@ -10,24 +10,16 @@ import json
 import uuid
 from typing import Optional
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import (
-    AIParseSession,
-    Command,
-    CommandPointMapping,
-    ConfidenceLevel,
-    DataPoint,
-    Product,
-    ProductStatus,
-)
+from app.models import AIParseSession, Product
 from app.models.schemas import AIParseResponse, AIReviewRequest
 from app.prompts import (
     PRODUCT_STUDIO_EXTRACTION,
     PRODUCT_STUDIO_OVERVIEW,
 )
 from app.services.ai_provider import get_ai_provider
+from app.services.product_creator import create_product_from_review
 
 # ── 硬规则推断引擎 (无需LLM) ──
 
@@ -273,88 +265,13 @@ class ProductStudioService:
     async def review_and_create(
         self, review: AIReviewRequest, db: AsyncSession
     ) -> Product:
-        """审核通过后创建产品"""
-        # 创建产品
-        product = Product(
-            id=uuid.uuid4(),
-            name=review.product.get("name", "未命名产品"),
-            model=review.product.get("model", "unknown"),
-            manufacturer=review.product.get("manufacturer"),
-            protocol=review.product.get("protocol", "modbus_rtu"),
-            description=review.product.get("description"),
-            tags=review.product.get("tags", []),
-            status=ProductStatus.ACTIVE.value,
-            source_documents=[],
-            ai_confidence=1.0,
-        )
-        db.add(product)
-
-        # 创建点位
-        point_id_map = {}
-        for dp_data in review.data_points:
-            dp_id = str(uuid.uuid4())
-            point = DataPoint(
-                id=uuid.UUID(dp_id),
-                product_id=product.id,
-                identifier=dp_data.get("identifier", ""),
-                name=dp_data.get("name", ""),
-                description=dp_data.get("description"),
-                category=dp_data.get("category"),
-                register=dp_data.get("register"),
-                data_type=dp_data.get("data_type", "float32"),
-                unit=dp_data.get("unit"),
-                access=dp_data.get("access", "R"),
-                scale=dp_data.get("scale", 1.0),
-                offset=dp_data.get("offset", 0.0),
-                precision=dp_data.get("precision", 1),
-                range_min=dp_data.get("range_min"),
-                range_max=dp_data.get("range_max"),
-                enum_values=dp_data.get("enum_values"),
-                ai_confidence=dp_data.get("confidence", ConfidenceLevel.CERTAIN.value),
-                needs_review=False,
-            )
-            db.add(point)
-            point_id_map[dp_data.get("identifier")] = dp_id
-
-        # 创建命令
-        for cmd_data in review.commands:
-            cmd_id = str(uuid.uuid4())
-            command = Command(
-                id=uuid.UUID(cmd_id),
-                product_id=product.id,
-                identifier=cmd_data.get("identifier", ""),
-                name=cmd_data.get("name", ""),
-                description=cmd_data.get("description"),
-                method=cmd_data.get("method"),
-                parameters=cmd_data.get("parameters", []),
-                ai_confidence=cmd_data.get("confidence", ConfidenceLevel.CERTAIN.value),
-                needs_review=False,
-            )
-            db.add(command)
-
-            # 创建命令-点位映射
-            related = cmd_data.get("related_point_ids", [])
-            for dp_identifier in related:
-                if dp_identifier in point_id_map:
-                    mapping = CommandPointMapping(
-                        id=uuid.uuid4(),
-                        command_id=command.id,
-                        point_id=uuid.UUID(point_id_map[dp_identifier]),
-                        relation="WRITE_TO",
-                    )
-                    db.add(mapping)
-
-        # 更新解析会话
-        stmt = select(AIParseSession).where(AIParseSession.id == uuid.UUID(review.session_id))
-        result = await db.execute(stmt)
-        session = result.scalar_one_or_none()
-        if session:
-            session.status = "confirmed"
-            session.confirmed_product_id = product.id
-
-        await db.commit()
-        await db.refresh(product)
-        return product
+        """审核通过后创建产品 - delegates to product_creator service (SRP)."""
+        review_dict = {
+            "product": review.product,
+            "data_points": review.data_points,
+            "commands": review.commands,
+        }
+        return await create_product_from_review(review_dict, review.session_id, db)
 
 
 # 单例
