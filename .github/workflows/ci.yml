@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: devicejoin
+          POSTGRES_USER: devicejoin
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U devicejoin -d devicejoin"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Lint
+        working-directory: backend
+        run: python -m ruff check app/
+
+      - name: Test
+        working-directory: backend
+        run: python -m pytest tests/ -v --tb=short
+        env:
+          DATABASE_URL: postgresql+asyncpg://devicejoin:testpass@localhost:5432/devicejoin
+          REDIS_URL: redis://localhost:6379/0
+          OPENAI_API_KEY: ci-test-key-placeholder
+
+      - name: Health check smoke test
+        working-directory: backend
+        run: |
+          python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 3
+          curl -f http://localhost:8000/health || exit 1
+        env:
+          DATABASE_URL: postgresql+asyncpg://devicejoin:testpass@localhost:5432/devicejoin
+          OPENAI_API_KEY: ci-test-key-placeholder
+
+      - name: Verify required files
+        run: |
+          test -f docker-compose.yml || (echo "Missing docker-compose.yml" && exit 1)
+          test -f .env.example || (echo "Missing .env.example" && exit 1)
+          test -f .gitignore || (echo "Missing .gitignore" && exit 1)
+          test -f README.md || (echo "Missing README.md" && exit 1)

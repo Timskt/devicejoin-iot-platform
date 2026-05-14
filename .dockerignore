@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+test*.db
+
+# Docs
+docs/
+*.md
+!README.md
+
+# macOS
+.DS_Store
+
+# CI/CD
+.github/
+
+# Node (frontend)
+node_modules/
