@@ -45,10 +45,11 @@ jobs:
           python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
           SERVER_PID=$!
           sleep 3
-          curl -f -s http://localhost:8000/health || (kill $SERVER_PID && exit 1)
+          curl -f -s http://localhost:8000/health || { kill $SERVER_PID 2>/dev/null; exit 1; }
           curl -f -s http://localhost:8000/metrics | head -5 || echo "metrics ok"
-          kill $SERVER_PID
+          kill $SERVER_PID 2>/dev/null
         env:
+          DATABASE_URL: sqlite+aiosqlite:///./smoke_test.db
           OPENAI_API_KEY: ci-test-key-placeholder
 
       - name: Verify required files

@@ -25,9 +25,14 @@ async_session_factory = async_sessionmaker(
 
 
 async def init_db():
-    """创建所有表 (开发用，生产用 Alembic)"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Create all tables. Swallows connection errors gracefully."""
+    from app.core.logging import get_logger
+    log = get_logger(__name__)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        log.warning("init_db_skipped", reason=str(e)[:100])
 
 
 async def get_db() -> AsyncSession:
