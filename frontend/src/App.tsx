@@ -77,16 +77,26 @@ export default function App() {
 
   const aiParse = async () => {
     setParseLoading(true);
+    setParseResult(null);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
     try {
       const r = await fetch(`${API}/products/ai/parse`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ files: [], product_hint: parseHint || undefined }),
+        signal: controller.signal,
       });
-      setParseResult(await r.json());
+      const text = await r.text();
+      try {
+        setParseResult(JSON.parse(text));
+      } catch {
+        setParseResult({ error: `解析失败: ${text.slice(0, 100)}` });
+      }
     } catch (e: any) {
-      setParseResult({ error: e.message });
+      setParseResult({ error: e.name === "AbortError" ? "请求超时，AI 正在处理中，请稍后重试" : `网络错误: ${e.message}` });
     }
+    clearTimeout(timer);
     setParseLoading(false);
   };
 
