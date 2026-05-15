@@ -1,8 +1,6 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    env_file:
-      - .env
     environment:
       POSTGRES_DB: devicejoin
       POSTGRES_USER: devicejoin
@@ -50,8 +48,6 @@ services:
       target: production
     ports:
       - "8000:8000"
-    env_file:
-      - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://devicejoin:${DB_PASSWORD:-devicejoin_dev}@postgres:5432/devicejoin
       REDIS_URL: redis://redis:6379/0
