@@ -4,5 +4,5 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { port: 3000, proxy: { "/api": "http://localhost:8000" } },
+  server: { port: 3000, proxy: { "/api": "http://localhost:8000", "/health": "http://localhost:8000", "/metrics": "http://localhost:8000" } },
 });
