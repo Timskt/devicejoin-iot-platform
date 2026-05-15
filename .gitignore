@@ -53,3 +53,4 @@ secrets/
 
 # Alembic
 versions/*.pyc
+node_modules/
