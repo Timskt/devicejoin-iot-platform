@@ -1,9 +1,12 @@
-import os
-import pytest
 from app.core.config import Settings
 from app.models.schemas import (
-    ProductCreate, DataPointCreate, CommandCreate, CommandParam,
-    AIParseResponse, RuleCreate, DashboardCreate, DebugRequest,
+    AIParseResponse,
+    CommandCreate,
+    CommandParam,
+    DashboardCreate,
+    DataPointCreate,
+    ProductCreate,
+    RuleCreate,
 )
 from app.services.ai_provider import AIProvider, OpenAIProvider, get_ai_provider, reset_ai_provider
 

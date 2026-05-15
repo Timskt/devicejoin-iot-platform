@@ -1,7 +1,6 @@
 import uuid
-import pytest
-from app.models import Product, DataPoint, Command, CommandPointMapping
-from app.models import Device, Telemetry, Rule, Dashboard
+
+from app.models import Command, CommandPointMapping, Dashboard, DataPoint, Device, Product, Rule
 
 
 class TestProductModel:

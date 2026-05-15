@@ -1,4 +1,5 @@
 import pytest
+
 from app.services.product_studio import (
     apply_inference_rules,
     match_commands_to_points,

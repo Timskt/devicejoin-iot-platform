@@ -2,10 +2,10 @@
 测试配置 & 共享 fixtures
 """
 import os
-import uuid
+
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import Base
 
@@ -39,7 +39,7 @@ async def db():
 def client():
     """覆盖数据库 URL 的测试客户端"""
     from app.core.config import get_settings
-    from app.core.database import get_db, async_session_factory, engine as app_engine
+    from app.core.database import get_db
     from app.main import app
 
     # 覆盖数据库连接
