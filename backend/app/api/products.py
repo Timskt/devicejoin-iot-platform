@@ -4,6 +4,7 @@ from __future__ import annotations
 REST API - 产品管理 & AI 解析
 """
 
+import asyncio
 import uuid
 from typing import Optional
 
@@ -13,18 +14,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.cache import get_cache
-from app.core.database import get_db
+from app.core.database import async_session_factory, get_db
 from app.core.rate_limit import limiter
-from app.models import Command, DataPoint, Product
+from app.models import AIParseSession, Command, DataPoint, Product
 from app.models.schemas import (
     AIParseRequest,
     AIParseResponse,
+    AIParseSessionResponse,
     AIReviewRequest,
     ProductCreate,
     ProductResponse,
     ProductUpdate,
 )
-from app.services.product_studio import get_product_studio
+from app.services.product_studio import apply_inference_rules, get_product_studio, match_commands_to_points
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -139,18 +141,101 @@ async def delete_product(
     await get_cache().delete("products:list")
 
 
-# ─── AI 解析 ───
+# ─── AI 解析 (SSE 流式 + 轮询兜底) ───
 
-@router.post("/ai/parse", response_model=AIParseResponse)
+from fastapi.responses import StreamingResponse
+
+
+@router.post("/ai/parse")
 @limiter.limit("5/minute")
-async def ai_parse_documents(request: Request, data: AIParseRequest, db: AsyncSession = Depends(get_db)):
+async def ai_parse_stream(request: Request, data: AIParseRequest, db: AsyncSession = Depends(get_db)):
+    """Stream AI document parsing via Server-Sent Events. Real-time progress + result."""
+    import asyncio as _asyncio
+    session_id = str(uuid.uuid4())
+
+    # Create session
+    session = AIParseSession(id=uuid.UUID(session_id), status="processing", uploaded_files=[{"url": f} for f in data.files])
+    db.add(session)
+    await db.commit()
+
+    content = "\n\n".join(data.files or [])
+    hint = data.product_hint or ""
     studio = get_product_studio()
-    result = await studio.parse_documents(
-        files=data.files,
-        product_hint=data.product_hint or "",
-        db=db,
-    )
-    return result
+
+    async def event_stream():
+        db2 = async_session_factory()
+        try:
+            yield _sse("stage", '{"stage":"overview","progress":10,"message":"正在分析文档结构..."}')
+            overview = await studio._overview_analysis(content or hint)
+            if "error" in overview:
+                yield _sse("error", json.dumps(overview))
+                return
+
+            yield _sse("stage", '{"stage":"extraction","progress":40,"message":"正在提取数据点位和命令..."}')
+            extraction = await studio._extract_details(content or hint, overview, hint)
+
+            yield _sse("stage", '{"stage":"inference","progress":70,"message":"正在推断补全缺失信息..."}')
+            extraction["data_points"] = apply_inference_rules(extraction.get("data_points", []))
+            extraction["commands"] = match_commands_to_points(extraction.get("commands", []), extraction.get("data_points", []))
+
+            # Save
+            stmt = select(AIParseSession).where(AIParseSession.id == uuid.UUID(session_id))
+            r = await db2.execute(stmt)
+            ses = r.scalar_one_or_none()
+            if ses:
+                ses.status = "completed"
+                ses.raw_analysis = {"overview": overview, "extraction": extraction}
+                await db2.commit()
+
+            result = {"session_id": session_id, "status": "completed",
+                       "product": extraction.get("product"),
+                       "data_points": extraction.get("data_points", []),
+                       "commands": extraction.get("commands", []),
+                       "uncertainties": extraction.get("uncertainties", []),
+                       "overall_confidence": extraction.get("overall_confidence", 0.8)}
+            yield _sse("result", json.dumps(result, ensure_ascii=False))
+            yield _sse("done", '{"message":"解析完成"}')
+
+        except Exception as e:
+            stmt = select(AIParseSession).where(AIParseSession.id == uuid.UUID(session_id))
+            r = await db2.execute(stmt)
+            ses = r.scalar_one_or_none()
+            if ses:
+                ses.status = "failed"
+                ses.raw_analysis = {"error": str(e)}
+                await db2.commit()
+            yield _sse("error", json.dumps({"message": str(e)[:200]}))
+        finally:
+            await db2.close()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"X-Session-Id": session_id, "Cache-Control": "no-cache", "Connection": "keep-alive"})
+
+
+def _sse(event: str, data: str) -> str:
+    return f"event: {event}\ndata: {data}\n\n"
+
+
+@router.get("/ai/parse/{session_id}", response_model=AIParseSessionResponse)
+async def ai_parse_poll(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Fallback: poll session status if SSE connection dropped."""
+    stmt = select(AIParseSession).where(AIParseSession.id == uuid.UUID(session_id))
+    result = await db.execute(stmt)
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(404, "解析会话不存在")
+
+    resp = AIParseSessionResponse(session_id=str(session.id), status=session.status or "processing", stage="", progress=0)
+    if session.status == "completed" and session.raw_analysis:
+        e = session.raw_analysis.get("extraction", {})
+        resp.product = e.get("product")
+        resp.data_points = e.get("data_points", [])
+        resp.commands = e.get("commands", [])
+        resp.uncertainties = e.get("uncertainties", [])
+        resp.overall_confidence = e.get("overall_confidence", 0.0)
+    elif session.status == "failed":
+        resp.error = str(session.raw_analysis.get("error", "Unknown")) if session.raw_analysis else ""
+    return resp
 
 
 @router.post("/ai/review", response_model=ProductResponse, status_code=201)

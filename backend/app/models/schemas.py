@@ -138,6 +138,20 @@ class AIParseResponse(BaseModel):
     raw_analysis: Optional[dict] = None
 
 
+class AIParseSessionResponse(BaseModel):
+    """Polling response for async AI parse session."""
+    session_id: str
+    status: str  # uploading / processing / completed / failed
+    stage: str = ""  # overview / extraction / inference
+    progress: int = 0  # 0-100
+    product: Optional[dict] = None
+    data_points: list[dict] = []
+    commands: list[dict] = []
+    uncertainties: list[dict] = []
+    overall_confidence: float = 0.0
+    error: str = ""
+
+
 class AIReviewRequest(BaseModel):
     session_id: str
     data_points: list[dict]

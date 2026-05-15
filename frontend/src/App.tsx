@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 
 const API = "/api/v1";
 
@@ -31,31 +31,65 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("products");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
+  const [health, setHealth] = useState<any>({});
 
   // AI Parse state
   const [parseHint, setParseHint] = useState("");
   const [parseResult, setParseResult] = useState<any>(null);
   const [parseLoading, setParseLoading] = useState(false);
+  const [parseStream, setParseStream] = useState("");
 
-  // Dashboard state
-  const [health, setHealth] = useState<any>({});
-
-  const fetchProducts = useCallback(async () => {
+  const fetchProducts = async () => {
     setLoading(true);
-    try {
-      const r = await fetch(`${API}/products`);
-      setProducts(await r.json());
-    } catch { /* offline */ }
+    try { const r = await fetch(`${API}/products`); setProducts(await r.json()); } catch { /* */ }
     setLoading(false);
-  }, []);
+  };
+  const fetchHealth = async () => { try { const r = await fetch("/health"); setHealth(await r.json()); } catch { /* */ } };
+  useEffect(() => { fetchProducts(); fetchHealth(); }, []);
 
-  useEffect(() => { fetchProducts(); fetchHealth(); }, [fetchProducts]);
-
-  const fetchHealth = async () => {
+  const aiParse = async () => {
+    setParseLoading(true);
+    setParseResult(null);
+    setParseStream("");
     try {
-      const r = await fetch("/health");
-      setHealth(await r.json());
-    } catch { /* */ }
+      const r = await fetch(`${API}/products/ai/parse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: [], product_hint: parseHint || undefined }),
+      });
+      const reader = r.body?.getReader();
+      if (!reader) throw new Error("No response body");
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        // Parse SSE events
+        for (const line of buf.split("\n")) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (line.includes("event: stage")) {
+                setParseStream(data.message || "");
+              } else if (line.includes("event: result")) {
+                setParseResult(data);
+                setParseStream("");
+              } else if (line.includes("event: error")) {
+                setParseResult({ error: data.message });
+                setParseStream("");
+              } else if (line.includes("event: done")) {
+                setParseStream("");
+              }
+            } catch { /* partial chunk */ }
+          }
+        }
+        buf = buf.includes("\n\n") ? buf.slice(buf.lastIndexOf("\n\n") + 2) : buf;
+      }
+    } catch (e: any) {
+      setParseResult({ error: e.message });
+    }
+    setParseLoading(false);
   };
 
   const createProduct = async () => {
@@ -73,31 +107,6 @@ export default function App() {
     if (!confirm("确认删除？")) return;
     await fetch(`${API}/products/${id}`, { method: "DELETE" });
     fetchProducts();
-  };
-
-  const aiParse = async () => {
-    setParseLoading(true);
-    setParseResult(null);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 90000);
-    try {
-      const r = await fetch(`${API}/products/ai/parse`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files: [], product_hint: parseHint || undefined }),
-        signal: controller.signal,
-      });
-      const text = await r.text();
-      try {
-        setParseResult(JSON.parse(text));
-      } catch {
-        setParseResult({ error: `解析失败: ${text.slice(0, 100)}` });
-      }
-    } catch (e: any) {
-      setParseResult({ error: e.name === "AbortError" ? "请求超时，AI 正在处理中，请稍后重试" : `网络错误: ${e.message}` });
-    }
-    clearTimeout(timer);
-    setParseLoading(false);
   };
 
   const confirmParseAndCreate = async () => {
@@ -196,6 +205,11 @@ export default function App() {
             <button style={S.btnPrimary} onClick={aiParse} disabled={parseLoading}>
               {parseLoading ? "AI 分析中..." : "🔍 AI 智能解析"}
             </button>
+            {parseStream && (
+              <div style={{ marginTop: 12, padding: 12, background: "#f0f9ff", borderRadius: 6, fontSize: 13, color: "#0369a1" }}>
+                <span style={{ marginRight: 8 }}>⏳</span>{parseStream}
+              </div>
+            )}
           </div>
 
           {parseResult && (
