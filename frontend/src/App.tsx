@@ -61,30 +61,34 @@ export default function App() {
       if (!reader) throw new Error("No response body");
       const decoder = new TextDecoder();
       let buf = "";
+      let eventType = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
-        // Parse SSE events
         for (const line of buf.split("\n")) {
-          if (line.startsWith("data: ")) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
             try {
               const data = JSON.parse(line.slice(6));
-              if (line.includes("event: stage")) {
-                setParseStream(data.message || "");
-              } else if (line.includes("event: result")) {
+              if (eventType === "stage") {
+                setParseStream(data.message || data.stage || "");
+              } else if (eventType === "result") {
                 setParseResult(data);
                 setParseStream("");
-              } else if (line.includes("event: error")) {
-                setParseResult({ error: data.message });
+              } else if (eventType === "error") {
+                setParseResult({ error: data.message || "AI 服务暂时不可用" });
                 setParseStream("");
-              } else if (line.includes("event: done")) {
+              } else if (eventType === "done") {
                 setParseStream("");
               }
             } catch { /* partial chunk */ }
           }
         }
-        buf = buf.includes("\n\n") ? buf.slice(buf.lastIndexOf("\n\n") + 2) : buf;
+        // Keep last incomplete line
+        const lastNL = buf.lastIndexOf("\n");
+        buf = lastNL >= 0 ? buf.slice(lastNL + 1) : buf;
       }
     } catch (e: any) {
       setParseResult({ error: e.message });
