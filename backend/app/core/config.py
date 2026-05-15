@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     llm_api_key: str = ""
-    llm_api_base: str = "https://api.openai.com/v1"
-    llm_model: str = "gpt-4o"
+    llm_api_base: str = "https://api.deepseek.com/v1"
+    llm_model: str = "deepseek-v4-pro"
 
     jwt_secret_key: str = "change-me"
     jwt_algorithm: str = "HS256"

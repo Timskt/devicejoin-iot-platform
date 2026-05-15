@@ -52,8 +52,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://devicejoin:${DB_PASSWORD:-devicejoin_dev}@postgres:5432/devicejoin
       REDIS_URL: redis://redis:6379/0
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_API_BASE: ${LLM_API_BASE:-https://api.openai.com/v1}
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o}
+      LLM_API_BASE: ${LLM_API_BASE:-https://opencode.ai/zen/go/v1}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-devicejoin_dev_secret_key}
     depends_on:
       postgres:
