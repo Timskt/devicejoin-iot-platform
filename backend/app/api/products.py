@@ -292,3 +292,97 @@ async def list_commands(product_id: str, db: AsyncSession = Depends(get_db)):
     stmt = select(Command).where(Command.product_id == uuid.UUID(product_id))
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+# ─── 点位 CRUD ───
+
+@router.post("/{product_id}/points", status_code=201)
+async def create_point(product_id: str, data: dict, db: AsyncSession = Depends(get_db)):
+    dp = DataPoint(
+        id=uuid.uuid4(),
+        product_id=uuid.UUID(product_id),
+        identifier=data.get("identifier", ""),
+        name=data.get("name", ""),
+        description=data.get("description"),
+        register=data.get("register"),
+        data_type=data.get("data_type", "float32"),
+        unit=data.get("unit"),
+        access=data.get("access", "R"),
+        range_min=data.get("range_min"),
+        range_max=data.get("range_max"),
+    )
+    db.add(dp)
+    await db.commit()
+    await db.refresh(dp)
+    return dp
+
+
+@router.patch("/{product_id}/points/{point_id}")
+async def update_point(product_id: str, point_id: str, data: dict, db: AsyncSession = Depends(get_db)):
+    stmt = select(DataPoint).where(DataPoint.id == uuid.UUID(point_id), DataPoint.product_id == uuid.UUID(product_id))
+    result = await db.execute(stmt)
+    dp = result.scalar_one_or_none()
+    if not dp:
+        raise HTTPException(404, "点位不存在")
+    for key in ("identifier", "name", "description", "register", "data_type", "unit", "access", "range_min", "range_max"):
+        if key in data:
+            setattr(dp, key, data[key])
+    await db.commit()
+    await db.refresh(dp)
+    return dp
+
+
+@router.delete("/{product_id}/points/{point_id}", status_code=204)
+async def delete_point(product_id: str, point_id: str, db: AsyncSession = Depends(get_db)):
+    stmt = select(DataPoint).where(DataPoint.id == uuid.UUID(point_id), DataPoint.product_id == uuid.UUID(product_id))
+    result = await db.execute(stmt)
+    dp = result.scalar_one_or_none()
+    if not dp:
+        raise HTTPException(404, "点位不存在")
+    await db.delete(dp)
+    await db.commit()
+
+
+# ─── 命令 CRUD ───
+
+@router.post("/{product_id}/commands", status_code=201)
+async def create_command(product_id: str, data: dict, db: AsyncSession = Depends(get_db)):
+    cmd = Command(
+        id=uuid.uuid4(),
+        product_id=uuid.UUID(product_id),
+        identifier=data.get("identifier", ""),
+        name=data.get("name", ""),
+        description=data.get("description"),
+        method=data.get("method"),
+        parameters=data.get("parameters", []),
+    )
+    db.add(cmd)
+    await db.commit()
+    await db.refresh(cmd)
+    return cmd
+
+
+@router.patch("/{product_id}/commands/{command_id}")
+async def update_command(product_id: str, command_id: str, data: dict, db: AsyncSession = Depends(get_db)):
+    stmt = select(Command).where(Command.id == uuid.UUID(command_id), Command.product_id == uuid.UUID(product_id))
+    result = await db.execute(stmt)
+    cmd = result.scalar_one_or_none()
+    if not cmd:
+        raise HTTPException(404, "命令不存在")
+    for key in ("identifier", "name", "description", "method", "parameters"):
+        if key in data:
+            setattr(cmd, key, data[key])
+    await db.commit()
+    await db.refresh(cmd)
+    return cmd
+
+
+@router.delete("/{product_id}/commands/{command_id}", status_code=204)
+async def delete_command(product_id: str, command_id: str, db: AsyncSession = Depends(get_db)):
+    stmt = select(Command).where(Command.id == uuid.UUID(command_id), Command.product_id == uuid.UUID(product_id))
+    result = await db.execute(stmt)
+    cmd = result.scalar_one_or_none()
+    if not cmd:
+        raise HTTPException(404, "命令不存在")
+    await db.delete(cmd)
+    await db.commit()
