@@ -43,6 +43,10 @@ PRODUCT_STUDIO_EXTRACTION = """你是一位 IoT 协议分析专家。根据资�
 6. 如果资料里有寄存器映射表，逐行提取，不要遗漏
 7. scale 默认为 1.0，如果文档提到缩放系数才修改
 8. 相同寄存器不同功能码 → 拆分为不同点位
+9. 命令必须关联相关点位，标注 relation 类型: WRITE_TO / READ_FROM / TRIGGER
+10. register_type: 标注寄存器区段类型(holding_register/input_register/coil/discrete_input)
+11. 通信参数: 从文档提取 baud_rate/slave_id/data_bits/parity/stop_bits 等
+12. 有换算公式的必须正确设置 scale，如"÷100"→scale=0.01，"×0.1"→scale=0.1
 
 ## 资料内容:
 {content}
@@ -60,9 +64,11 @@ PRODUCT_STUDIO_EXTRACTION = """你是一位 IoT 协议分析专家。根据资�
     "name": "产品名称",
     "model": "型号",
     "manufacturer": "厂商",
-    "protocol": "协议类型",
+    "protocol": "协议类型(modbus_rtu/modbus_tcp/mqtt/http等)",
     "description": "产品描述",
-    "tags": ["标签1", "标签2"]
+    "tags": ["标签1", "标签2"],
+    "template_name": "可复用模板名称(如'modbus-standard-v1')",
+    "communication": {{"baud_rate": 9600, "slave_id": 1, "data_bits": 8, "parity": "N", "stop_bits": 1}}
   }},
   "data_points": [
     {{
@@ -71,6 +77,7 @@ PRODUCT_STUDIO_EXTRACTION = """你是一位 IoT 协议分析专家。根据资�
       "description": "描述",
       "category": "环境 | 电气 | 状态 | 控制 | 计量",
       "register": "寄存器地址",
+      "register_type": "holding_register | input_register | coil | discrete_input",
       "data_type": "int16 | uint16 | int32 | uint32 | float32 | float64 | bool | string",
       "unit": "单位(℃/%/V/A/kW/kWh/Hz等)",
       "access": "R | W | RW",
@@ -100,7 +107,9 @@ PRODUCT_STUDIO_EXTRACTION = """你是一位 IoT 协议分析专家。根据资�
           "description": "参数描述"
         }}
       ],
-      "related_point_ids": ["关联点位identifier"],
+      "related_points": [
+        {{"point_id": "关联点位identifier", "relation": "WRITE_TO | READ_FROM | TRIGGER"}}
+      ],
       "confidence": "certain | inferred | guessed | unknown",
       "reasoning": "推断理由"
     }}
