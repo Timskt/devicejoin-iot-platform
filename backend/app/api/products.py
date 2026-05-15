@@ -165,15 +165,36 @@ async def ai_parse_stream(request: Request, data: AIParseRequest, db: AsyncSessi
 
     async def event_stream():
         db2 = async_session_factory()
+        send_queue: list = []
+
+        async def do_send(msg: str):
+            send_queue.append(msg)
+
         try:
             yield _sse("stage", '{"stage":"overview","progress":10,"message":"正在分析文档结构..."}')
-            overview = await studio._overview_analysis(content or hint)
-            if "error" in overview:
+
+            overview = await _run_with_heartbeat(
+                studio._overview_analysis(content or hint),
+                _sse("ping", "{}"),
+                do_send,
+            )
+            for msg in send_queue:
+                yield msg
+            send_queue.clear()
+
+            if isinstance(overview, dict) and "error" in overview:
                 yield _sse("error", json.dumps(overview))
                 return
 
             yield _sse("stage", '{"stage":"extraction","progress":40,"message":"正在提取数据点位和命令..."}')
-            extraction = await studio._extract_details(content or hint, overview, hint)
+            extraction = await _run_with_heartbeat(
+                studio._extract_details(content or hint, overview, hint),
+                _sse("ping", "{}"),
+                do_send,
+            )
+            for msg in send_queue:
+                yield msg
+            send_queue.clear()
 
             yield _sse("stage", '{"stage":"inference","progress":70,"message":"正在推断补全缺失信息..."}')
             extraction["data_points"] = apply_inference_rules(extraction.get("data_points", []))
@@ -215,6 +236,17 @@ async def ai_parse_stream(request: Request, data: AIParseRequest, db: AsyncSessi
 
 def _sse(event: str, data: str) -> str:
     return f"event: {event}\ndata: {data}\n\n"
+
+
+async def _run_with_heartbeat(coro, heartbeat: str, send):
+    """Await coroutine while pushing heartbeats periodically via send()."""
+    task = asyncio.create_task(coro)
+    while not task.done():
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+        except asyncio.TimeoutError:
+            await send(heartbeat)
+    return task.result()
 
 
 @router.get("/ai/parse/{session_id}", response_model=AIParseSessionResponse)
