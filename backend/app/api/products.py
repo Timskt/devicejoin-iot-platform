@@ -5,6 +5,7 @@ REST API - 产品管理 & AI 解析
 """
 
 import asyncio
+import json
 import uuid
 from typing import Optional
 
